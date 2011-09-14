@@ -56,6 +56,8 @@
 #include <scandal/utils.h>
 #include <scandal/uart.h>
 #include <scandal/stdio.h>
+#include <scandal/wdt.h>
+#include <scandal/tritium.h>
 
 #include <string.h>
 
@@ -171,21 +173,28 @@ int main(void) {
 	char buf_2[BUFFER_SIZE];
 	char *current_buf;
 	struct UART_buffer_descriptor buf_desc_1, buf_desc_2;
+	int i;
+	float velocity = 1.0; // velocity in metres per second
+	float bus_current = 1.0; // perentage of bus current max
+	float motor_current = 1.0;
 
 	setup();
 
+	/* Initialise the watchdog timer. If the node crashes, it will restart automatically */
+	WDT_Init(); 
+
+	/* Initialise Scandal, registers for the config messages, timesync messages and in channels */
 	scandal_init();
-
-	UART_Init(115200);
-
-	sc_time_t one_sec_timer = sc_get_timer(); /* Initialise the timer variable */
-	sc_time_t test_in_timer = sc_get_timer(); /* Initialise the timer variable */
 
 	/* Set LEDs to known states */
 	red_led(0);
 	yellow_led(1);
 
-	scandal_delay(100); /* wait for the UART clocks to settle */
+	/* Initialise UART0 */
+	UART_Init(115200);
+
+	/* Wait until UART is ready */
+	scandal_delay(100);
 
 	/* Display welcome header over UART */
 	UART_printf("Welcome to the template project! This is coming out over UART1\n\r");
@@ -193,10 +202,18 @@ int main(void) {
 	UART_printf("If you configure the in channel 0, I should print a message upon receipt of such a channel message\n\r");
 	UART_printf("This also shows an example of double buffer reading from the UART. Enter the text 'time' and press enter\n\r> ");
 
+	red_led(1);
+
+	sc_time_t one_sec_timer = sc_get_timer();
+	sc_time_t test_in_timer = sc_get_timer();
+
+	/* Register our in channel handler */
 	scandal_register_in_channel_handler(0, &in_channel_0_handler);
 
-	UART_init_double_buffer(&buf_desc_1, buf_1, BUFFER_SIZE,
-								&buf_desc_2, buf_2, BUFFER_SIZE);
+//	UART_init_double_buffer(&buf_desc_1, buf_1, BUFFER_SIZE,
+//								&buf_desc_2, buf_2, BUFFER_SIZE);
+
+	can_register_id(ID_STD_MASK, MC_BASE, 0, CAN_STD_MSG);
 
 	/* This is the main loop, go for ever! */
 	while (1) {
@@ -205,6 +222,7 @@ int main(void) {
 		 * the number of errors and the version of scandal */
 		handle_scandal();
 
+#if 0
 		current_buf = UART_readline_double_buffer(&buf_desc_1, &buf_desc_2);
 
 		/* UART_readline_double_buffer will return a pointer to the current buffer. */
@@ -213,10 +231,18 @@ int main(void) {
 				UART_printf("The time is: %d\r\n> ", (int)sc_get_timer());
 			}
 		}
+#endif
 
 		/* Send a UART and CAN message and flash an LED every second */
-		if(sc_get_timer() >= one_sec_timer + 1000) {
+		if(sc_get_timer() >= one_sec_timer + 100) {
 			/* Send the message */
+			//UART_printf("ws command speed = %f time = %d\n\r", velocity, one_sec_timer);
+
+			UART_printf("1 second! sending driver control commands\n\r");
+
+			scandal_send_ws_drive_command(DC_DRIVE, velocity, motor_current);
+			scandal_send_ws_drive_command(DC_POWER, 0.0, bus_current);
+			scandal_send_ws_id(DC_BASE, "TRIb", 4);
 
 			/* Send a channel message with a blerg value at low priority on channel 0 */
 			scandal_send_channel(TELEM_LOW, /* priority */
@@ -225,7 +251,6 @@ int main(void) {
 			);
 
 			/* Twiddle the LEDs */
-			toggle_yellow_led();
 			toggle_red_led();
 
 			/* Update the timer */
@@ -236,8 +261,6 @@ int main(void) {
 		 * This is a silly way to do this. A better way is to use the scandal_register_in_channel_handler
 		 * feature. Your function will get called when a new message comes in */
 		if(scandal_get_in_channel_rcvd_time(TEMPLATE_TEST_IN) > test_in_timer) {
-
-			
 
 			UART_printf("I received a channel message in the main loop on in_channel 0, value %u at time %d\n\r", 
 				(unsigned int)scandal_get_in_channel_value(TEMPLATE_TEST_IN), 
@@ -252,5 +275,8 @@ int main(void) {
 
 			test_in_timer = scandal_get_in_channel_rcvd_time(TEMPLATE_TEST_IN);
 		}
+
+		/* Tickle the watchdog so we don't reset */
+		WDT_Feed();
 	}
 }

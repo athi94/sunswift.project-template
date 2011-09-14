@@ -11,10 +11,6 @@
 #include <scandal/error.h>
 #include <scandal/devices.h>
 
-void scandal_reset_node(void){
-
-}
-
 void scandal_user_do_first_run(void) {
 	return;
 }
