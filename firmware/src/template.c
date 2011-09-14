@@ -50,6 +50,10 @@
  * along with the project.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#undef 	DOUBLE_BUFFER_EXAMPLE
+#undef 	IN_CHANNEL_EXAMPLE
+#define WAVESCULPTOR_EXAMPLE
+
 #include <scandal/engine.h>
 #include <scandal/message.h>
 #include <scandal/leds.h>
@@ -57,7 +61,7 @@
 #include <scandal/uart.h>
 #include <scandal/stdio.h>
 #include <scandal/wdt.h>
-#include <scandal/tritium.h>
+#include <scandal/wavesculptor.h>
 
 #include <string.h>
 
@@ -122,8 +126,8 @@ interrupt (PORT2_VECTOR) port2int(void) {
 void setup(void) {
 #if defined(lpc11c14) || defined(lpc1768)
 	GPIO_Init();
-	GPIO_SetDir(2,8,1); //Green LED, Out
-	GPIO_SetDir(2,7,1); //Yel LED, Out
+	GPIO_SetDir(2, 8, 1); // Green LED, Out
+	GPIO_SetDir(2, 7, 1); // Yel LED, Out
 #else
 #ifdef msp43f149
 	init_clock();
@@ -157,26 +161,45 @@ void setup(void) {
 #endif // lpc1768 || lpc11c14
 } // setup
 
+#if defined(IN_CHANNEL_EXAMPLE)
 /* This is an in-channel handler. It gets called when a message comes in on the
  * registered node/channel combination as set up using the USB-CAN. */
 void in_channel_0_handler(int32_t value, uint32_t src_time) {
 	UART_printf("in_channel_0_handler got called with value %d time at source %u\n\r", (int)value, (unsigned int)src_time);
 }
+#endif
+
+#if defined(WAVESCULPTOR_EXAMPLE)
+/* This is an in-channel handler. It gets called when a message comes in on the
+ * registered node/channel combination as set up using the USB-CAN. */
+void ws_bus_handler(float bus_current, float bus_voltage, uint32_t time) {
+	UART_printf("ws_bus_handler @ time %u current=%f voltage=%f\n\r", (unsigned int)time, bus_current, bus_voltage);
+}
+
+void ws_temp_handler(float hs_temp, float motor_temp, uint32_t time) {
+	UART_printf("ws_temp_handler @ time %u hs_temp=%f motor_temp=%f\n\r", (unsigned int)time, hs_temp, motor_temp);
+}
+#endif
 
 #define BUFFER_SIZE 128
 
 /* This is your main function! You should have an infinite loop in here that
  * does all the important stuff your node was designed for */
 int main(void) {
+
+#if defined(DOUBLE_BUFFER_EXAMPLE)
 	/* variables for double buffer example */
 	char buf_1[BUFFER_SIZE];
 	char buf_2[BUFFER_SIZE];
 	char *current_buf;
 	struct UART_buffer_descriptor buf_desc_1, buf_desc_2;
-	int i;
-	float velocity = 1.0; // velocity in metres per second
+#endif
+
+#if defined(WAVESCULPTOR_EXAMPLE)
+	float velocity = 2.0; // velocity in metres per second
 	float bus_current = 1.0; // perentage of bus current max
 	float motor_current = 1.0;
+#endif
 
 	setup();
 
@@ -205,15 +228,23 @@ int main(void) {
 	red_led(1);
 
 	sc_time_t one_sec_timer = sc_get_timer();
-	sc_time_t test_in_timer = sc_get_timer();
 
-	/* Register our in channel handler */
+#if defined(IN_CHANNEL_EXAMPLE)
+	sc_time_t in_timer = sc_get_timer();
 	scandal_register_in_channel_handler(0, &in_channel_0_handler);
+#endif
 
-//	UART_init_double_buffer(&buf_desc_1, buf_1, BUFFER_SIZE,
-//								&buf_desc_2, buf_2, BUFFER_SIZE);
+#if defined(DOUBLE_BUFFER_EXAMPLE)
+	UART_init_double_buffer(&buf_desc_1, buf_1, BUFFER_SIZE,
+								&buf_desc_2, buf_2, BUFFER_SIZE);
+#endif
 
-	can_register_id(ID_STD_MASK, MC_BASE, 0, CAN_STD_MSG);
+#if defined(WAVESCULPTOR_EXAMPLE)
+	sc_time_t ws_timer = sc_get_timer();
+	/* register for wavesculptor BUS voltage messages */
+	scandal_register_ws_bus_callback(&ws_bus_handler);
+	scandal_register_ws_temp_callback(&ws_temp_handler);
+#endif
 
 	/* This is the main loop, go for ever! */
 	while (1) {
@@ -222,7 +253,7 @@ int main(void) {
 		 * the number of errors and the version of scandal */
 		handle_scandal();
 
-#if 0
+#if DOUBLE_BUFFER_EXAMPLE
 		current_buf = UART_readline_double_buffer(&buf_desc_1, &buf_desc_2);
 
 		/* UART_readline_double_buffer will return a pointer to the current buffer. */
@@ -233,16 +264,24 @@ int main(void) {
 		}
 #endif
 
+#if defined(WAVESCULPTOR_EXAMPLE)
 		/* Send a UART and CAN message and flash an LED every second */
-		if(sc_get_timer() >= one_sec_timer + 100) {
+		if(sc_get_timer() >= ws_timer + 100) {
 			/* Send the message */
-			//UART_printf("ws command speed = %f time = %d\n\r", velocity, one_sec_timer);
-
-			UART_printf("1 second! sending driver control commands\n\r");
 
 			scandal_send_ws_drive_command(DC_DRIVE, velocity, motor_current);
 			scandal_send_ws_drive_command(DC_POWER, 0.0, bus_current);
 			scandal_send_ws_id(DC_BASE, "TRIb", 4);
+
+			/* Update the timer */
+			ws_timer = sc_get_timer();
+		}
+#endif
+
+		/* Send a UART and CAN message and flash an LED every second */
+		if(sc_get_timer() >= one_sec_timer + 1000) {
+			/* Send the message */
+			UART_printf("1 second timer %u\n\r", (unsigned int)sc_get_timer());
 
 			/* Send a channel message with a blerg value at low priority on channel 0 */
 			scandal_send_channel(TELEM_LOW, /* priority */
@@ -257,10 +296,11 @@ int main(void) {
 			one_sec_timer = sc_get_timer();
 		}
 
+#if defined(IN_CHANNEL_EXAMPLE)
 		/* The old way of checking for an incoming message that you've registered for.
 		 * This is a silly way to do this. A better way is to use the scandal_register_in_channel_handler
 		 * feature. Your function will get called when a new message comes in */
-		if(scandal_get_in_channel_rcvd_time(TEMPLATE_TEST_IN) > test_in_timer) {
+		if(scandal_get_in_channel_rcvd_time(TEMPLATE_TEST_IN) > in_timer) {
 
 			UART_printf("I received a channel message in the main loop on in_channel 0, value %u at time %d\n\r", 
 				(unsigned int)scandal_get_in_channel_value(TEMPLATE_TEST_IN), 
@@ -273,8 +313,9 @@ int main(void) {
 				toggle_yellow_led();
 			}
 
-			test_in_timer = scandal_get_in_channel_rcvd_time(TEMPLATE_TEST_IN);
+			in_timer = scandal_get_in_channel_rcvd_time(TEMPLATE_TEST_IN);
 		}
+#endif
 
 		/* Tickle the watchdog so we don't reset */
 		WDT_Feed();
