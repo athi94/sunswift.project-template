@@ -126,8 +126,8 @@ interrupt (PORT2_VECTOR) port2int(void) {
 void setup(void) {
 #if defined(lpc11c14) || defined(lpc1768)
 	GPIO_Init();
-	GPIO_SetDir(2, 8, 1); // Green LED, Out
-	GPIO_SetDir(2, 7, 1); // Yel LED, Out
+	GPIO_SetDir(RED_LED_PORT, RED_LED_BIT, 1);
+	GPIO_SetDir(YELLOW_LED_PORT, YELLOW_LED_BIT, 1);
 #else
 #ifdef msp43f149
 	init_clock();
@@ -181,13 +181,12 @@ void ws_temp_handler(float hs_temp, float motor_temp, uint32_t time) {
 }
 #endif
 
-#define BUFFER_SIZE 128
-
 /* This is your main function! You should have an infinite loop in here that
  * does all the important stuff your node was designed for */
 int main(void) {
 
 #if defined(DOUBLE_BUFFER_EXAMPLE)
+#define BUFFER_SIZE 128
 	/* variables for double buffer example */
 	char buf_1[BUFFER_SIZE];
 	char buf_2[BUFFER_SIZE];
@@ -220,28 +219,28 @@ int main(void) {
 	scandal_delay(100);
 
 	/* Display welcome header over UART */
-	UART_printf("Welcome to the template project! This is coming out over UART1\n\r");
-	UART_printf("The 2 debug LEDs should blink at a rate of 1HZ\n\r");
-	UART_printf("If you configure the in channel 0, I should print a message upon receipt of such a channel message\n\r");
-	UART_printf("This also shows an example of double buffer reading from the UART. Enter the text 'time' and press enter\n\r> ");
+	UART_printf("Welcome to the template project! This is coming out over UART0\n\r");
+	UART_printf("A debug LED should blink at a rate of 1HZ\n\r");
 
 	red_led(1);
 
 	sc_time_t one_sec_timer = sc_get_timer();
 
 #if defined(IN_CHANNEL_EXAMPLE)
+	UART_printf("If you configure the in channel 0, a message should print upon receipt of such a channel message\n\r");
 	sc_time_t in_timer = sc_get_timer();
 	scandal_register_in_channel_handler(0, &in_channel_0_handler);
 #endif
 
 #if defined(DOUBLE_BUFFER_EXAMPLE)
+	UART_printf("This shows an example of double buffer reading from the UART. Enter the text 'time' and press enter\n\r> ");
 	UART_init_double_buffer(&buf_desc_1, buf_1, BUFFER_SIZE,
 								&buf_desc_2, buf_2, BUFFER_SIZE);
 #endif
 
 #if defined(WAVESCULPTOR_EXAMPLE)
 	sc_time_t ws_timer = sc_get_timer();
-	/* register for wavesculptor BUS voltage messages */
+	/* register for wavesculptor bus and temp messages */
 	scandal_register_ws_bus_callback(&ws_bus_handler);
 	scandal_register_ws_temp_callback(&ws_temp_handler);
 #endif
@@ -265,10 +264,9 @@ int main(void) {
 #endif
 
 #if defined(WAVESCULPTOR_EXAMPLE)
-		/* Send a UART and CAN message and flash an LED every second */
+		/* Send the wavesculptor drive commands every 100ms.
+		 * To make this more 'realtime', we should be doing this with a timer interrupt */
 		if(sc_get_timer() >= ws_timer + 100) {
-			/* Send the message */
-
 			scandal_send_ws_drive_command(DC_DRIVE, velocity, motor_current);
 			scandal_send_ws_drive_command(DC_POWER, 0.0, bus_current);
 			scandal_send_ws_id(DC_BASE, "TRIb", 4);
