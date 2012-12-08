@@ -52,7 +52,7 @@
 
 #undef 	DOUBLE_BUFFER_EXAMPLE
 #undef 	IN_CHANNEL_EXAMPLE
-#define WAVESCULPTOR_EXAMPLE
+#undef WAVESCULPTOR_EXAMPLE
 
 #include <scandal/engine.h>
 #include <scandal/message.h>

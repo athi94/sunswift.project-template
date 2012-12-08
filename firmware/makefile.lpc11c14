@@ -100,4 +100,4 @@ uart: build/main.bin
 
 flash: build/main.bin
 	#echo "attempting to program using the UART bootloader"
-	@sudo ../utilities/lpc21isp -bin build/main.bin -control /dev/ttyUSB0 115200 12000
+	@sudo ../utilities/lpc21isp -bin build/main.bin -controlinv -term -control /dev/ttyUSB0 115200 12000
