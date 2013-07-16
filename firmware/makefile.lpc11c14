@@ -31,6 +31,8 @@ CFLAGS += -lm
 LSCRIPT = $(LINKER)/$(LINKSCRIPT)
 LDFLAGS  = -nostdlib  -Xlinker -Map=$(BUILD)/main.map -Xlinker --gc-sections -L $(LINKER) -T "$(LSCRIPT)"
 
+DEV_ADDRESS = $(shell ../utilities/findPort.py $(PROJECT_NAME))
+
 all: $(BUILD)/main.axf $(BUILD)/main.bin
 
 $(BUILD)/main.axf: $(addprefix $(BUILD)/,$(OBJECTS))
@@ -91,13 +93,32 @@ program: $(BUILD)/main.axf
 		fi; \
 	fi
 
-uart: build/main.bin
-	@echo "attempting program using the UART bootlaoder"
-	@sudo ../utilities/lpc21isp -bin build/main.bin -control /dev/ttyUSB0 115200 12000
-	@./pySerial.py
 #program using .bin, doesn't seem to work atm
 #sudo $(FLASH_CHIP) -wire=winusb -p$(UC) -flash-load=$(BUILD)/main.bin -load-base=0x0000
+init:
+	@echo "Initialising FT232R"
+	@sudo ../utilities/ft232r_prog --manufacturer Sunswift --product $(PROJECT_NAME) --invert_rts --invert_dtr
+	@echo "Please ensure RTS and DTR are inverted, then disconnect and re-connect the device"
 
-flash: build/main.bin
-	#echo "attempting to program using the UART bootloader"
-	@sudo ../utilities/lpc21isp -bin build/main.bin -controlinv -term -control /dev/ttyUSB0 115200 12000
+		
+init64:
+	@echo "Initialising FT232R"
+	@sudo ../utilities/ft232r_prog_64 --manufacturer Sunswift --product $(PROJECT_NAME) --invert_rts --invert_dtr
+	@echo "Please ensure RTS and DTR are inverted, then disconnect and re-connect the device"
+	
+uart: #Open a terminal without restarting micro
+	@echo starting up serial terminal without restarting
+	@echo try *make uartc* if you see nothing
+	@sudo ../utilities/lpc21isp -bin build/main.bin -termonly $(DEV_ADDRESS) 115200 12000
+	
+uartc: #Restart micro and open a terminal
+	@echo starting up serial terminal with restart
+	@sudo ../utilities/lpc21isp -bin build/main.bin -control -controlinv -termonly $(DEV_ADDRESS) 115200 12000
+
+debug: build/main.bin #Flash and open uart terminal
+	@echo attempting program $(PROJECT_NAME) at $(DEV_ADDRESS) using the UART bootlaoder
+	@sudo ../utilities/lpc21isp -bin build/main.bin -verify -control -controlinv -term $(DEV_ADDRESS) 115200 12000
+
+flash: build/main.bin #Flash without opening a terminal
+	@echo attempting program $(PROJECT_NAME) at $(DEV_ADDRESS) using the UART bootlaoder
+	@sudo ../utilities/lpc21isp -bin build/main.bin -verify -control -controlinv $(DEV_ADDRESS) 115200 12000

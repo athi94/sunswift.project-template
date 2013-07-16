@@ -8,12 +8,16 @@ CHIP = lpc11c14
 # This should be what your main C file is called
 MAIN_NAME = template
 
+# This is the unique identifier name for the project
+PROJECT_NAME = TEMPLATE
+
 # Directory definitions
 ROOT = ..
 SCANDAL = $(ROOT)/scandal
 ARCH = $(SCANDAL)/src/arch/$(CHIP)
 DRIVERS = $(ARCH)/drivers
 UTILS = $(ROOT)/utilities
+TOOLS = $(UTILS)/tools/bin
 BUILD = ./build# never . or clean will delete everything
 SRC = ./src
 
